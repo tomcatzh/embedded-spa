@@ -7,6 +7,13 @@ and the project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+### Fixed
+
+- Combine repeated `Accept`, `Accept-Encoding`, and `If-None-Match` field
+  lines before evaluating negotiation and validators.
+- Enforce the RFC 9110 qvalue grammar instead of clamping arbitrary
+  floating-point values.
+
 ## [0.1.1] - 2026-07-27
 
 ### Fixed

@@ -336,11 +336,7 @@ where
     let br = A::get(&br_path);
     let gzip = A::get(&gzip_path);
     let has_alternates = br.is_some() || gzip.is_some();
-    let accept_encoding = headers
-        .get(header::ACCEPT_ENCODING)
-        .and_then(|value| value.to_str().ok());
-
-    let identity_quality = encoding_quality(accept_encoding, "identity");
+    let identity_quality = encoding_quality(headers, "identity");
     let mut selected = if identity_quality > 0 {
         Some((identity_quality, logical_path.to_owned(), identity, None))
     } else {
@@ -348,14 +344,14 @@ where
     };
 
     if let Some(file) = gzip {
-        let quality = encoding_quality(accept_encoding, "gzip");
+        let quality = encoding_quality(headers, "gzip");
         if quality > 0 && selected.as_ref().is_none_or(|current| quality >= current.0) {
             selected = Some((quality, gzip_path, file, Some("gzip")));
         }
     }
 
     if let Some(file) = br {
-        let quality = encoding_quality(accept_encoding, "br");
+        let quality = encoding_quality(headers, "br");
         if quality > 0 && selected.as_ref().is_none_or(|current| quality >= current.0) {
             selected = Some((quality, br_path, file, Some("br")));
         }
@@ -371,40 +367,60 @@ where
     )
 }
 
-fn encoding_quality(header_value: Option<&str>, coding: &str) -> u16 {
-    let Some(header_value) = header_value else {
-        return u16::from(coding == "identity") * 1000;
-    };
-
+fn encoding_quality(headers: &HeaderMap, coding: &str) -> u16 {
     let mut wildcard = None;
     let mut exact = None;
+    let mut saw_value = false;
 
-    for item in header_value.split(',') {
-        let mut parts = item.trim().split(';');
-        let name = parts.next().unwrap_or_default().trim();
-        let quality = parts
-            .find_map(|parameter| {
-                let (key, value) = parameter.trim().split_once('=')?;
-                key.eq_ignore_ascii_case("q")
-                    .then(|| parse_quality(value.trim()))
-            })
-            .unwrap_or(1000);
+    for header_value in headers.get_all(header::ACCEPT_ENCODING) {
+        let Ok(header_value) = header_value.to_str() else {
+            continue;
+        };
+        saw_value = true;
 
-        if name.eq_ignore_ascii_case(coding) {
-            exact = Some(quality);
-        } else if name == "*" {
-            wildcard = Some(quality);
+        for item in header_value.split(',') {
+            let mut parts = item.trim().split(';');
+            let name = parts.next().unwrap_or_default().trim();
+            let quality = parts
+                .find_map(|parameter| {
+                    let (key, value) = parameter.trim().split_once('=')?;
+                    key.eq_ignore_ascii_case("q")
+                        .then(|| parse_quality(value.trim()).unwrap_or(0))
+                })
+                .unwrap_or(1000);
+
+            if name.eq_ignore_ascii_case(coding) {
+                exact = Some(quality);
+            } else if name == "*" {
+                wildcard = Some(quality);
+            }
         }
+    }
+
+    if !saw_value {
+        return u16::from(coding == "identity") * 1000;
     }
 
     exact.unwrap_or_else(|| wildcard.unwrap_or_else(|| u16::from(coding == "identity") * 1000))
 }
 
-fn parse_quality(value: &str) -> u16 {
-    value
-        .parse::<f32>()
-        .map(|quality| (quality.clamp(0.0, 1.0) * 1000.0).round() as u16)
-        .unwrap_or(0)
+fn parse_quality(value: &str) -> Option<u16> {
+    let (whole, fraction) = value.split_once('.').map_or((value, ""), |parts| parts);
+    if fraction.len() > 3 || !fraction.bytes().all(|byte| byte.is_ascii_digit()) {
+        return None;
+    }
+
+    match whole {
+        "1" if fraction.bytes().all(|byte| byte == b'0') => Some(1000),
+        "0" => {
+            let mut padded = fraction.to_owned();
+            while padded.len() < 3 {
+                padded.push('0');
+            }
+            padded.parse().ok()
+        }
+        _ => None,
+    }
 }
 
 fn strong_etag(hash: [u8; 32]) -> HeaderValue {
@@ -421,21 +437,20 @@ fn strong_etag(hash: [u8; 32]) -> HeaderValue {
 }
 
 fn etag_matches(headers: &HeaderMap, current: &HeaderValue) -> bool {
-    let Some(candidate) = headers
-        .get(header::IF_NONE_MATCH)
-        .and_then(|value| value.to_str().ok())
-    else {
-        return false;
-    };
     let Ok(current) = current.to_str() else {
         return false;
     };
     let current = current.strip_prefix("W/").unwrap_or(current);
 
-    candidate.split(',').any(|tag| {
-        let tag = tag.trim();
-        tag == "*" || tag.strip_prefix("W/").unwrap_or(tag) == current
-    })
+    headers
+        .get_all(header::IF_NONE_MATCH)
+        .iter()
+        .filter_map(|value| value.to_str().ok())
+        .flat_map(|value| value.split(','))
+        .any(|tag| {
+            let tag = tag.trim();
+            tag == "*" || tag.strip_prefix("W/").unwrap_or(tag) == current
+        })
 }
 
 fn safe_asset_path(uri: &Uri, index_path: &str) -> Option<String> {
@@ -462,22 +477,22 @@ fn is_safe_relative_path(path: &str) -> bool {
 
 fn accepts_html(headers: &HeaderMap) -> bool {
     headers
-        .get(header::ACCEPT)
-        .and_then(|value| value.to_str().ok())
-        .is_some_and(|value| {
-            value.split(',').any(|item| {
-                let mut parts = item.trim().split(';');
-                let media_type = parts.next().unwrap_or_default().trim();
-                let quality = parts
-                    .find_map(|parameter| {
-                        let (key, value) = parameter.trim().split_once('=')?;
-                        key.eq_ignore_ascii_case("q")
-                            .then(|| parse_quality(value.trim()))
-                    })
-                    .unwrap_or(1000);
+        .get_all(header::ACCEPT)
+        .iter()
+        .filter_map(|value| value.to_str().ok())
+        .flat_map(|value| value.split(','))
+        .any(|item| {
+            let mut parts = item.trim().split(';');
+            let media_type = parts.next().unwrap_or_default().trim();
+            let quality = parts
+                .find_map(|parameter| {
+                    let (key, value) = parameter.trim().split_once('=')?;
+                    key.eq_ignore_ascii_case("q")
+                        .then(|| parse_quality(value.trim()).unwrap_or(0))
+                })
+                .unwrap_or(1000);
 
-                media_type.eq_ignore_ascii_case("text/html") && quality > 0
-            })
+            media_type.eq_ignore_ascii_case("text/html") && quality > 0
         })
 }
 
@@ -496,24 +511,60 @@ mod tests {
 
     #[test]
     fn absent_accept_encoding_prefers_identity() {
-        assert_eq!(encoding_quality(None, "identity"), 1000);
-        assert_eq!(encoding_quality(None, "gzip"), 0);
-        assert_eq!(encoding_quality(None, "br"), 0);
+        let headers = HeaderMap::new();
+        assert_eq!(encoding_quality(&headers, "identity"), 1000);
+        assert_eq!(encoding_quality(&headers, "gzip"), 0);
+        assert_eq!(encoding_quality(&headers, "br"), 0);
     }
 
     #[test]
     fn quality_values_and_wildcards_are_respected() {
-        let value = Some("gzip;q=0.6, br;q=1, *;q=0.2");
-        assert_eq!(encoding_quality(value, "br"), 1000);
-        assert_eq!(encoding_quality(value, "gzip"), 600);
-        assert_eq!(encoding_quality(value, "zstd"), 200);
-        assert_eq!(encoding_quality(Some("*;q=0"), "identity"), 0);
+        let mut headers = HeaderMap::new();
+        headers.insert(
+            header::ACCEPT_ENCODING,
+            HeaderValue::from_static("gzip;q=0.6, br;q=1, *;q=0.2"),
+        );
+        assert_eq!(encoding_quality(&headers, "br"), 1000);
+        assert_eq!(encoding_quality(&headers, "gzip"), 600);
+        assert_eq!(encoding_quality(&headers, "zstd"), 200);
+
+        headers.insert(header::ACCEPT_ENCODING, HeaderValue::from_static("*;q=0"));
+        assert_eq!(encoding_quality(&headers, "identity"), 0);
+    }
+
+    #[test]
+    fn repeated_accept_encoding_fields_are_combined() {
+        let mut headers = HeaderMap::new();
+        headers.append(
+            header::ACCEPT_ENCODING,
+            HeaderValue::from_static("gzip;q=0.4"),
+        );
+        headers.append(header::ACCEPT_ENCODING, HeaderValue::from_static("br;q=1"));
+
+        assert_eq!(encoding_quality(&headers, "gzip"), 400);
+        assert_eq!(encoding_quality(&headers, "br"), 1000);
+    }
+
+    #[test]
+    fn quality_values_follow_the_http_grammar() {
+        assert_eq!(parse_quality("0"), Some(0));
+        assert_eq!(parse_quality("0.5"), Some(500));
+        assert_eq!(parse_quality("0.123"), Some(123));
+        assert_eq!(parse_quality("1.000"), Some(1000));
+        assert_eq!(parse_quality("1.001"), None);
+        assert_eq!(parse_quality("0.1234"), None);
+        assert_eq!(parse_quality("-0.1"), None);
+        assert_eq!(parse_quality("NaN"), None);
     }
 
     #[test]
     fn weak_if_none_match_can_validate_a_strong_etag_for_get() {
         let mut headers = HeaderMap::new();
-        headers.insert(
+        headers.append(
+            header::IF_NONE_MATCH,
+            HeaderValue::from_static("\"sha256-other\""),
+        );
+        headers.append(
             header::IF_NONE_MATCH,
             HeaderValue::from_static("W/\"sha256-example\""),
         );
@@ -546,6 +597,15 @@ mod tests {
             HeaderValue::from_static("text/html;q=0, application/json"),
         );
         assert!(!accepts_html(&headers));
+    }
+
+    #[test]
+    fn repeated_accept_fields_are_combined() {
+        let mut headers = HeaderMap::new();
+        headers.append(header::ACCEPT, HeaderValue::from_static("application/json"));
+        headers.append(header::ACCEPT, HeaderValue::from_static("text/html"));
+
+        assert!(accepts_html(&headers));
     }
 
     #[test]
