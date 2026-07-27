@@ -12,9 +12,6 @@ JavaScript framework. It turns immutable files supplied by
 [`rust-embed`](https://github.com/pyrossh/rust-embed) into correct Axum
 responses.
 
-> 给人类维护者：这是一个 MIT 独立项目。README 以 coding agent 能直接复制、
-> 验证和排错为优先；核心 HTTP 契约和生产注意事项也完整记录在下面。
-
 ## Coding agent: start here
 
 If you are integrating this crate into an existing Rust + SPA application,
