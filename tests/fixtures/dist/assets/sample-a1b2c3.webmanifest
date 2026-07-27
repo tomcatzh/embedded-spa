@@ -1,0 +1,6 @@
+{
+  "name": "embedded-spa fixture",
+  "short_name": "fixture",
+  "start_url": "/",
+  "display": "standalone"
+}

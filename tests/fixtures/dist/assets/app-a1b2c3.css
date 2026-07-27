@@ -1,0 +1,9 @@
+:root {
+  color: #222;
+  background: #fafafa;
+  font-family: system-ui, sans-serif;
+}
+
+#app {
+  margin: 2rem;
+}

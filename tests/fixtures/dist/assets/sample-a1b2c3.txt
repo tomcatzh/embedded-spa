@@ -1,0 +1,2 @@
+embedded-spa plain text fixture
+identity, gzip, and Brotli must decode to these exact bytes.

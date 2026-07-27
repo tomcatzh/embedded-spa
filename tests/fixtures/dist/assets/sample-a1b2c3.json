@@ -1,0 +1,5 @@
+{
+  "fixture": "embedded-spa",
+  "kind": "application/json",
+  "cache": "immutable"
+}

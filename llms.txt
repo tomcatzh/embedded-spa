@@ -1,0 +1,32 @@
+# embedded-spa
+
+> Cache-correct Axum responses for rust-embed SPAs with build-time identity,
+> gzip, and Brotli representations.
+
+Canonical repository: https://github.com/tomcatzh/embedded-spa
+License: MIT
+MSRV: Rust 1.85
+
+## Agent entry points
+
+- README and copy-paste integration: ./README.md
+- Public API: ./src/lib.rs
+- Runnable Axum example: ./examples/minimal.rs
+- Nginx integration contract: ./tests/nginx/nginx.conf.template
+- Full real-proxy test: ./scripts/test-nginx.sh
+- Build-time precompression helper: ./scripts/precompress.mjs
+
+## Required validation
+
+Run `make check` after library or integration changes.
+Run `make test-nginx` after changing HTTP, ETag, MIME, encoding, or cache logic.
+
+## Non-negotiable invariants
+
+1. ETag identifies the final transferred representation bytes.
+2. identity, gzip, and Brotli representations have distinct strong ETags.
+3. Responses with compressed siblings emit `Vary: Accept-Encoding`.
+4. Missing assets are real `404` responses with `Cache-Control: no-store`.
+5. SPA fallback occurs only when the request explicitly accepts `text/html`.
+6. API routing belongs outside this crate and must be mounted before fallback.
+7. The request path performs no compression and no content hashing.
