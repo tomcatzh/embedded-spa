@@ -56,6 +56,38 @@ async fn identity_gzip_and_brotli_have_distinct_strong_etags() {
 }
 
 #[tokio::test]
+async fn repeated_accept_encoding_fields_select_the_best_representation() {
+    let response = spa().serve(
+        Request::builder()
+            .uri("/")
+            .header(header::ACCEPT_ENCODING, "gzip;q=0.4")
+            .header(header::ACCEPT_ENCODING, "br;q=1")
+            .body(Body::empty())
+            .unwrap(),
+    );
+
+    assert_eq!(response.status(), StatusCode::OK);
+    assert_eq!(response.headers()[header::CONTENT_ENCODING], "br");
+}
+
+#[tokio::test]
+async fn invalid_quality_values_are_not_clamped_into_acceptance() {
+    let response = spa().serve(
+        Request::builder()
+            .uri("/")
+            .header(
+                header::ACCEPT_ENCODING,
+                "identity;q=0, gzip;q=0.5, br;q=1.0000",
+            )
+            .body(Body::empty())
+            .unwrap(),
+    );
+
+    assert_eq!(response.status(), StatusCode::OK);
+    assert_eq!(response.headers()[header::CONTENT_ENCODING], "gzip");
+}
+
+#[tokio::test]
 async fn matching_validator_returns_bodyless_304() {
     let spa = spa();
     let first = spa.serve(
@@ -111,6 +143,34 @@ async fn html_navigation_falls_back_but_missing_asset_does_not() {
     );
     assert_eq!(missing_asset.status(), StatusCode::NOT_FOUND);
     assert_eq!(missing_asset.headers()[header::CACHE_CONTROL], "no-store");
+}
+
+#[tokio::test]
+async fn repeated_accept_fields_can_enable_html_fallback() {
+    let response = spa().serve(
+        Request::builder()
+            .uri("/rooms/ABCD")
+            .header(header::ACCEPT, "application/json")
+            .header(header::ACCEPT, "text/html")
+            .body(Body::empty())
+            .unwrap(),
+    );
+
+    assert_eq!(response.status(), StatusCode::OK);
+    assert_eq!(response.headers()[header::CONTENT_TYPE], "text/html");
+}
+
+#[tokio::test]
+async fn invalid_html_quality_does_not_enable_fallback() {
+    let response = spa().serve(
+        Request::builder()
+            .uri("/rooms/ABCD")
+            .header(header::ACCEPT, "text/html;q=0.9999")
+            .body(Body::empty())
+            .unwrap(),
+    );
+
+    assert_eq!(response.status(), StatusCode::NOT_FOUND);
 }
 
 #[tokio::test]
