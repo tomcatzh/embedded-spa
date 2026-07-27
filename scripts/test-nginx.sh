@@ -122,14 +122,13 @@ assert_header_starts_with() {
     fail "expected $name to start with $expected, got ${value:-<missing>}"
 }
 
-for required_command in brotli cargo curl docker gzip node; do
+for required_command in brotli cargo curl docker gzip; do
   command -v "$required_command" >/dev/null 2>&1 ||
     fail "required command is missing: $required_command"
 done
 
 cd "$project_root"
 
-node scripts/precompress.mjs tests/fixtures/dist
 cargo build --release --example nginx_fixture_server
 
 EMBEDDED_SPA_TEST_BIND="0.0.0.0:$origin_port" \

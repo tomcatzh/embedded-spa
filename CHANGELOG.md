@@ -7,6 +7,15 @@ and the project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+## [0.1.1] - 2026-07-27
+
+### Fixed
+
+- Keep committed compressed fixtures unchanged during normal checks so
+  `cargo package` remains strict and reproducible across operating systems.
+- Use Node 24-based GitHub checkout actions and remove unnecessary Node setup
+  from jobs that consume committed fixtures.
+
 ## [0.1.0] - 2026-07-27
 
 ### Added
@@ -20,5 +29,6 @@ and the project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 - Real Nginx proxy-cache integration harness.
 - Agent-first integration instructions and acceptance checklist.
 
-[Unreleased]: https://github.com/tomcatzh/embedded-spa/compare/v0.1.0...HEAD
+[Unreleased]: https://github.com/tomcatzh/embedded-spa/compare/v0.1.1...HEAD
+[0.1.1]: https://github.com/tomcatzh/embedded-spa/compare/v0.1.0...v0.1.1
 [0.1.0]: https://github.com/tomcatzh/embedded-spa/releases/tag/v0.1.0

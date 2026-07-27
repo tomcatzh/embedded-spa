@@ -35,7 +35,7 @@ Use this Git dependency until a crates.io release exists:
 ```toml
 [dependencies]
 axum = "0.8"
-embedded-spa = { git = "https://github.com/tomcatzh/embedded-spa", tag = "v0.1.0" }
+embedded-spa = { git = "https://github.com/tomcatzh/embedded-spa", tag = "v0.1.1" }
 rust-embed = { version = "8", features = ["deterministic-timestamps"] }
 tokio = { version = "1", features = ["macros", "net", "rt-multi-thread"] }
 ```
@@ -43,7 +43,7 @@ tokio = { version = "1", features = ["macros", "net", "rt-multi-thread"] }
 Equivalent command:
 
 ```bash
-cargo add embedded-spa --git https://github.com/tomcatzh/embedded-spa --tag v0.1.0
+cargo add embedded-spa --git https://github.com/tomcatzh/embedded-spa --tag v0.1.1
 ```
 
 Do not use the repository's Nginx example as a substitute for mounting API
@@ -344,11 +344,13 @@ make test-nginx
 Requirements:
 
 - Docker;
-- Node.js;
 - `curl`;
 - `gzip`;
 - `brotli`;
 - Rust stable.
+
+Node.js is required only when using the optional `scripts/precompress.mjs`
+helper to generate representations, not when running the committed test matrix.
 
 The integration test starts an official Nginx container and a release fixture
 origin. It verifies:

@@ -6,16 +6,16 @@ fixtures:
 fmt:
 	cargo fmt --all
 
-check: fixtures
+check:
 	cargo fmt --all -- --check
 	cargo test --all-targets
 	cargo clippy --all-targets --all-features -- -D warnings
 	cargo doc --no-deps
 
-test: fixtures
+test:
 	cargo test --all-targets
 
-test-nginx: fixtures
+test-nginx:
 	./scripts/test-nginx.sh
 
 package: check
