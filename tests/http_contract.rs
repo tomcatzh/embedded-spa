@@ -173,6 +173,56 @@ async fn invalid_html_quality_does_not_enable_fallback() {
     assert_eq!(response.status(), StatusCode::NOT_FOUND);
 }
 
+#[test]
+fn configured_csp_covers_entry_and_generated_status_responses() {
+    let spa = spa();
+    let entry = spa.serve(request("/"));
+    let expected = entry.headers()[header::CONTENT_SECURITY_POLICY].clone();
+
+    let missing = spa.serve(request("/assets/missing.js"));
+    let mut method_not_allowed = request("/");
+    *method_not_allowed.method_mut() = Method::POST;
+    let method_not_allowed = spa.serve(method_not_allowed);
+    let not_acceptable = spa.serve(
+        Request::builder()
+            .uri("/")
+            .header(header::ACCEPT_ENCODING, "identity;q=0, *;q=0")
+            .body(Body::empty())
+            .unwrap(),
+    );
+
+    for (response, status) in [
+        (missing, StatusCode::NOT_FOUND),
+        (method_not_allowed, StatusCode::METHOD_NOT_ALLOWED),
+        (not_acceptable, StatusCode::NOT_ACCEPTABLE),
+    ] {
+        assert_eq!(response.status(), status);
+        assert_eq!(
+            response.headers()[header::CONTENT_SECURITY_POLICY],
+            expected
+        );
+    }
+}
+
+#[test]
+fn disabling_csp_removes_it_from_entry_and_status_responses() {
+    let spa = EmbeddedSpa::<FixtureAssets>::new(
+        EmbeddedSpaConfig::default().with_content_security_policy(None::<String>),
+    )
+    .unwrap();
+
+    for response in [
+        spa.serve(request("/")),
+        spa.serve(request("/assets/missing.js")),
+    ] {
+        assert!(
+            !response
+                .headers()
+                .contains_key(header::CONTENT_SECURITY_POLICY)
+        );
+    }
+}
+
 #[tokio::test]
 async fn direct_compressed_paths_are_hidden() {
     let response = spa().serve(request("/index.html.br"));

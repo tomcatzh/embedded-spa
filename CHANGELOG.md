@@ -13,6 +13,8 @@ and the project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
   lines before evaluating negotiation and validators.
 - Enforce the RFC 9110 qvalue grammar instead of clamping arbitrary
   floating-point values.
+- Apply the configured Content Security Policy to status responses generated
+  by `EmbeddedSpa`, not only to the HTML entry point.
 
 ## [0.1.1] - 2026-07-27
 
