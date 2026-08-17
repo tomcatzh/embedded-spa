@@ -1,4 +1,4 @@
-#![cfg(feature = "live-assets")]
+#![cfg(all(feature = "live-assets", debug_assertions))]
 
 use std::{fs, path::PathBuf};
 
