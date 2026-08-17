@@ -152,7 +152,7 @@ recompiling or restarting the Rust process:
 
 ```toml
 [features]
-dev-assets = ["embedded-spa/live-assets"]
+live-assets = ["embedded-spa/live-assets"]
 
 [dependencies]
 embedded-spa = { git = "https://github.com/tomcatzh/embedded-spa" }
@@ -162,7 +162,7 @@ rust-embed = { version = "8", features = ["deterministic-timestamps"] }
 Run the unchanged application and handler in development mode:
 
 ```bash
-cargo run --features dev-assets
+cargo run --features live-assets
 ```
 
 The same long-lived `EmbeddedSpa` now sees added, changed, and removed files on
@@ -172,7 +172,7 @@ read for that request, and `asset_count()` reports the current file count.
 This feature intentionally does not override `rust-embed` itself. Use a debug
 build and do not enable `rust-embed/debug-embed`; Cargo features are additive,
 so another dependency enabling `debug-embed` would make the provider embedded
-again. Release builds should omit `dev-assets` and use `cargo build --release`.
+again. Release builds should omit `live-assets` and use `cargo build --release`.
 They remain self-contained automatically.
 
 If a debug executable must also be self-contained, enable
