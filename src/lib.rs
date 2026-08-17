@@ -1,19 +1,23 @@
 //! General-purpose embedded web asset and SPA responses for Axum.
 //!
-//! The asset provider owns the final identity, gzip, and Brotli bytes.
-//! This crate negotiates those immutable representations, exposes their
-//! compile-time SHA-256 values as strong ETags, and applies a proxy-cache-safe
-//! HTTP contract without runtime hashing or compression.
+//! The asset provider owns the final identity, gzip, and Brotli bytes. This
+//! crate negotiates those representations, exposes their SHA-256 values as
+//! strong ETags, and applies a proxy-cache-safe HTTP contract without runtime
+//! compression. By default ETags are formatted once during construction. The
+//! `live-assets` feature instead resolves the file set and ETag metadata for
+//! every request so a filesystem-backed debug provider can change in place.
 
 #![forbid(unsafe_code)]
 
 use std::{
     borrow::Cow,
-    collections::HashMap,
     error::Error,
     fmt::{self, Write},
     marker::PhantomData,
 };
+
+#[cfg(not(feature = "live-assets"))]
+use std::collections::HashMap;
 
 use axum::{
     body::{Body, Bytes},
@@ -118,6 +122,7 @@ impl Error for EmbeddedSpaError {}
 /// A reusable embedded web asset service backed by a [`RustEmbed`] provider.
 pub struct EmbeddedSpa<A> {
     config: ValidatedConfig,
+    #[cfg(not(feature = "live-assets"))]
     etags: HashMap<String, HeaderValue>,
     assets: PhantomData<fn() -> A>,
 }
@@ -126,7 +131,11 @@ impl<A> EmbeddedSpa<A>
 where
     A: RustEmbed,
 {
-    /// Validate configuration and precompute response ETag header values.
+    /// Validate configuration and prepare response ETag handling.
+    ///
+    /// The default build precomputes ETag header values. With the
+    /// `live-assets` feature, ETags and the asset list are resolved from the
+    /// provider at request time instead.
     pub fn new(config: EmbeddedSpaConfig) -> Result<Self, EmbeddedSpaError> {
         if !is_safe_relative_path(&config.index_path) {
             return Err(EmbeddedSpaError::InvalidIndexPath(config.index_path));
@@ -136,6 +145,7 @@ where
             return Err(EmbeddedSpaError::MissingIndex(config.index_path));
         }
 
+        #[cfg(not(feature = "live-assets"))]
         let etags = A::iter()
             .filter_map(|path| {
                 let file = A::get(path.as_ref())?;
@@ -145,15 +155,24 @@ where
 
         Ok(Self {
             config: ValidatedConfig::try_from(config)?,
+            #[cfg(not(feature = "live-assets"))]
             etags,
             assets: PhantomData,
         })
     }
 
-    /// Return the number of embedded files, including compressed siblings.
+    /// Return the current number of files, including compressed siblings.
     #[must_use]
     pub fn asset_count(&self) -> usize {
-        self.etags.len()
+        #[cfg(feature = "live-assets")]
+        {
+            A::iter().count()
+        }
+
+        #[cfg(not(feature = "live-assets"))]
+        {
+            self.etags.len()
+        }
     }
 
     /// Convert an Axum request into a static, fallback, or error response.
@@ -196,7 +215,7 @@ where
             return self.status_response(StatusCode::NOT_ACCEPTABLE, None);
         };
 
-        let Some(etag) = self.etags.get(&selected.embedded_path) else {
+        let Some(etag) = self.response_etag(&selected) else {
             return self.status_response(StatusCode::INTERNAL_SERVER_ERROR, None);
         };
 
@@ -207,14 +226,14 @@ where
         } else {
             &self.config.revalidate_cache_control
         };
-        let not_modified = etag_matches(request_headers, etag);
+        let not_modified = etag_matches(request_headers, &etag);
         let mut builder = Response::builder()
             .status(if not_modified {
                 StatusCode::NOT_MODIFIED
             } else {
                 StatusCode::OK
             })
-            .header(header::ETAG, etag)
+            .header(header::ETAG, &etag)
             .header(header::CACHE_CONTROL, cache_control)
             .header(X_CONTENT_TYPE_OPTIONS, "nosniff");
 
@@ -252,6 +271,18 @@ where
         };
 
         builder.body(body).expect("static asset response is valid")
+    }
+
+    fn response_etag(&self, selected: &SelectedRepresentation) -> Option<HeaderValue> {
+        #[cfg(feature = "live-assets")]
+        {
+            Some(strong_etag(selected.file.metadata.sha256_hash()))
+        }
+
+        #[cfg(not(feature = "live-assets"))]
+        {
+            self.etags.get(&selected.embedded_path).cloned()
+        }
     }
 
     fn is_immutable_path(&self, path: &str) -> bool {
@@ -322,6 +353,7 @@ fn header_value(name: &'static str, value: String) -> Result<HeaderValue, Embedd
 }
 
 struct SelectedRepresentation {
+    #[cfg_attr(feature = "live-assets", allow(dead_code))]
     embedded_path: String,
     file: EmbeddedFile,
     encoding: Option<&'static str>,
