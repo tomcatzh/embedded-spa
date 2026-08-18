@@ -55,8 +55,10 @@ routes correctly. `/api/*` must be handled before the SPA fallback.
 - SPA fallback occurs only when `Accept` explicitly allows `text/html`.
 - `Accept-Encoding` q-values select identity, gzip, or Brotli.
 - Every final representation receives its own strong SHA-256 `ETag`.
-- ETags use `rust-embed` metadata and are formatted once during construction;
-  request handling does not hash content.
+- By default, ETags use `rust-embed` metadata and are formatted once during
+  construction; request handling does not hash content.
+- The opt-in `live-assets` feature refreshes file membership and ETag metadata
+  per request for filesystem-backed debug builds.
 - Files with compressed siblings emit `Vary: Accept-Encoding`.
 - MIME is inferred from the logical filename, not from `.gz` or `.br`.
 - `index.html`, immutable assets, revalidated assets, and errors have separate
@@ -141,20 +143,40 @@ fn app() -> Router {
 The nested API fallback is deliberate. A missing API route must not inherit the
 HTML fallback.
 
-### Debug builds
+### Live filesystem development
 
 By default, `rust-embed` reads from the filesystem in debug builds and embeds
-files in release builds. Add its `debug-embed` feature if debug executables
-must also be self-contained:
+files in release builds. `embedded-spa` normally caches its ETag headers during
+construction, so enable `live-assets` when frontend files must change without
+recompiling or restarting the Rust process:
 
 ```toml
-rust-embed = {
-  version = "8",
-  features = ["debug-embed", "deterministic-timestamps"]
-}
+[features]
+live-assets = ["embedded-spa/live-assets"]
+
+[dependencies]
+embedded-spa = { git = "https://github.com/tomcatzh/embedded-spa" }
+rust-embed = { version = "8", features = ["deterministic-timestamps"] }
 ```
 
-Production artifacts should still be built with `cargo build --release`.
+Run the unchanged application and handler in development mode:
+
+```bash
+cargo run --features live-assets
+```
+
+The same long-lived `EmbeddedSpa` now sees added, changed, and removed files on
+disk. It derives each response ETag from the metadata returned with the bytes
+read for that request, and `asset_count()` reports the current file count.
+
+This feature intentionally does not override `rust-embed` itself. Use a debug
+build and do not enable `rust-embed/debug-embed`; Cargo features are additive,
+so another dependency enabling `debug-embed` would make the provider embedded
+again. Release builds should omit `live-assets` and use `cargo build --release`.
+They remain self-contained automatically.
+
+If a debug executable must also be self-contained, enable
+`rust-embed/debug-embed` and leave `embedded-spa/live-assets` disabled.
 
 ## Build-time precompression
 
@@ -417,10 +439,11 @@ window, or store immutable chunks in versioned object storage/CDN.
 
 - `EmbeddedSpa<A>`: validated, reusable response service for a `RustEmbed`
   provider.
-- `EmbeddedSpa::new`: verifies the index and precomputes ETag header values.
+- `EmbeddedSpa::new`: verifies the index and prepares cached or live ETag
+  handling.
 - `EmbeddedSpa::serve`: synchronously converts an Axum request into a response.
-- `EmbeddedSpa::asset_count`: reports embedded files including compressed
-  siblings.
+- `EmbeddedSpa::asset_count`: reports files including compressed siblings;
+  with `live-assets`, it reflects the current provider contents.
 - `EmbeddedSpaConfig`: index path, immutable prefixes, cache policies, and CSP.
 - `EmbeddedSpaError`: startup configuration failure.
 
@@ -436,7 +459,9 @@ cargo doc --no-deps --open
 - Axum 0.8.
 - `rust-embed` 8.
 - No unsafe code.
-- No runtime hashing.
+- No runtime hashing in the default production mode.
+- `live-assets` intentionally refreshes ETag metadata per request for
+  development.
 - No runtime compression.
 - No filesystem access in release builds.
 - No application-specific API behavior.

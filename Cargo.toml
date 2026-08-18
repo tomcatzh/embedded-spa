@@ -26,6 +26,10 @@ include = [
     "/llms.txt",
 ]
 
+[features]
+default = []
+live-assets = []
+
 [dependencies]
 axum = "0.8.9"
 mime_guess = "2.0.5"

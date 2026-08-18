@@ -7,6 +7,12 @@ and the project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+### Added
+
+- Add the opt-in `live-assets` feature for filesystem-backed debug builds. It
+  keeps the existing `EmbeddedSpa` API while refreshing file membership,
+  response bytes, and strong ETags without rebuilding or restarting Rust.
+
 ### Fixed
 
 - Combine repeated `Accept`, `Accept-Encoding`, and `If-None-Match` field

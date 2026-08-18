@@ -29,4 +29,7 @@ Run `make test-nginx` after changing HTTP, ETag, MIME, encoding, or cache logic.
 4. Missing assets are real `404` responses with `Cache-Control: no-store`.
 5. SPA fallback occurs only when the request explicitly accepts `text/html`.
 6. API routing belongs outside this crate and must be mounted before fallback.
-7. The request path performs no compression and no content hashing.
+7. The default request path performs no compression and no content hashing.
+8. The opt-in `live-assets` development feature refreshes the asset list and
+   ETag metadata on every request; use it only with filesystem-backed
+   `rust-embed` debug builds.
